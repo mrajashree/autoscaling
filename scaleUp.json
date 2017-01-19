@@ -1,0 +1,10 @@
+{
+	"name": "min1-7", 
+	"driver": "scaleService", 
+	"action": "up", 
+	"amount": 2, 
+	"serviceId": "1s12",
+	"min": 1,
+	"max": 6,
+	"projectId": "1a5"
+}
