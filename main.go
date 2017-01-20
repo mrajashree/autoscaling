@@ -28,7 +28,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	json.Unmarshal(requestContent, &webhookRequestData)
 
-	webhookPayload, err := service.GetContainers(webhookRequestData)
-	service.GetStats()
-	_ = webhookPayload
+	_, err = service.GetContainers(webhookRequestData)
+	if err != nil {
+		fmt.Println(err)
+	}
+	// service.GetStats(externalIds)
 }
