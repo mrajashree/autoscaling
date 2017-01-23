@@ -85,8 +85,8 @@ total:6.7905753e+07]] diskio:map[] network:map[tx_bytes:0 tx_errors:0 interfaces
 tx_dropped:0 name:eth0 rx_dropped:0 tx_bytes:258 tx_packets:3 tx_errors:0]] name: rx_bytes:0 rx_packets:0 rx_errors:0
 rx_dropped:0 tx_packets:0 tx_dropped:0] memory:map[usage:520192]]]
 ```
-*CPU*</br>
-**Approach 1**
+**CPU**</br>
+*Approach 1*
 - Rancher uses docker-stats to get metric values of the containers, so rancher-autoscale service can calculate CPUUtilization% as displayed in the output of `docker stats` command </br>
 
 CONTAINER  | CPU % | MEM USAGE / LIMIT | MEM % | NET I/O | BLOCK I/O | PIDS
@@ -111,7 +111,7 @@ Autoscale service can use the docker-stats formula for that:
 - We can calculate the cpuDelta because we get the fields for `CPUUsage` in our stats. But for calculating systemDelta, rancher agent can populate and send [SystemCPUUsage](https://github.com/rancher/agent/blob/master/service/hostapi/stats/common.go#L176) while creating [containerStats output](https://github.com/rancher/agent/blob/0ae80b3770320680a23d2fe41edd08fa11ccdced/service/hostapi/stats/stats_unix.go#L11). Or CPUUsage % calculation can be done in agent.
 - Rancher-autoscale service will check the CPUUtilization periodically. This period can be controlled by a flag called `--Autoscale-sync-period` set at the launch of rancher-autoscale service, but will be the same for all AutoScalePolicies. Default will be 30s.
 
-**Approach 2**
+*Approach 2*
 - Kubernetes HorizontalPodAutoscaler calculates CPUUsage% as 
 `(CPUUtilization avg over 1 last minute)/(CPU requested by the pod) * 100`
 - The CPU request is in mCPU for kubernetes. Request in terms of mCPU can be provided through the Rancher UI while creating a service. Kubernetes makes it a must to specify CPU requests while creating pods/containers, or the kubernetes HorizontalPodAutoscaler ignores the containers during autoscaling for which the CPU request is not specified. Because the CPUUtilization is with respect to the CPU requested. Kubernetes uses heapster for getting metrics and it has a default [metric resolution](https://github.com/kubernetes/heapster/blob/e19c9fb0d78695ce02e34afc821be5525f70f1d7/metrics/options/options.go#L56) of 60s. The HorizontalPodAutoscaler period is 30s by default.
@@ -170,7 +170,8 @@ The containerStats are incoming at a rate of 1 entry per second for all containe
 		//Will contain calculations from either of the two approaches
 	}
 ```
-*Memory*</br>
+
+**Memory**</br>
 To calculate memory percentage as per docker stats, we can use fields `memLimit` and `memory.usage` from the rancher containerStats. 
 ```
 	statsMap := arr[0]
@@ -178,27 +179,3 @@ To calculate memory percentage as per docker stats, we can use fields `memLimit`
 	memUsed := statsMap["memory"].(map[string]interface{})["usage"].(float64)
 	memoryUtilization := (memUsed / memLimit) * 100
 ```
-
-<h2> Initial description </h2>
-
-* There will be one autoscaler running per service. The autoscaler will need the cattle API keys to make changes to the scale of the service. It will have three actions for scaling:</br>
-Scale out: Increase number of containers of the service</br>
-Scale in: Decrease number of containers of the service</br>
-Default: Set to the default number of containers, with which the service was created</br>
-
-* The cpu shares and memory limit for every container need to be specified when it is created. If these fields are not specified then the autoscaler will not know the current % CPU utilization or % memory utilization and won’t take any action on that service. So the fields `cpu_shares` and `mem_limit` should be set for the service in `docker-compose.yml` file.
-
-* User can add rules as following:</br>
-If average CPU utilization >= 60% for 10 minutes, scale out by 1 container</br>
-			   >= 85% for 5 minutes, scale out by 3 containers</br>
-			   <= 40% for 25 minutes, scale in by 2 containers</br>
-Each rule will be of the form:</br>
-`If <metric> <operation> <metric_value> <time_span> then <scale_action> <number_of_containers>`, where</br>
-<b> metric </b> can be one of the three: % CPU utilization, % memory utilization and HTTP/TCP requests/second</br>
-<b> operation </b> can be one of these: ‘<=’, ‘>=’, ‘=’, ‘<’, ‘>’</br>
-<b> metric_value </b> will be specified by the user. It will be the percentage of the threshold value of that metric, at which scale in or scale out should happen.</br>
-<b> time_span </b> is the time for which the containers need to have the `<metric_value>` before scale in or scale out takes place. Time span for scale out operations should be more than that for scale in.</br>
-<b> scale_action </b> can be one of these: Scale out, Scale in, Default (set to original number of containers)</br>
-<b> number_of_containers </b> is the change in number of containers.</br>
-
-* Autoscaler can obtain CPU and memory utilization through API, and get the HTTP request rate from HAProxy Frontend Metrics
