@@ -85,6 +85,7 @@ total:6.7905753e+07]] diskio:map[] network:map[tx_bytes:0 tx_errors:0 interfaces
 tx_dropped:0 name:eth0 rx_dropped:0 tx_bytes:258 tx_packets:3 tx_errors:0]] name: rx_bytes:0 rx_packets:0 rx_errors:0
 rx_dropped:0 tx_packets:0 tx_dropped:0] memory:map[usage:520192]]]
 ```
+*CPU*</br>
 **Approach 1**
 - Rancher uses docker-stats to get metric values of the containers, so rancher-autoscale service can calculate CPUUtilization% as displayed in the output of `docker stats` command </br>
 
@@ -169,43 +170,13 @@ The containerStats are incoming at a rate of 1 entry per second for all containe
 		//Will contain calculations from either of the two approaches
 	}
 ```
-
-where the first key `id` is the container's externalId obtained in step 2. It will store this in a map
+*Memory*</br>
+To calculate memory percentage as per docker stats, we can use fields `memLimit` and `memory.usage` from the rancher containerStats. 
 ```
-	var containerStats map[string]Stats
-	
-	type Stats struct {
-		cpuTotal	int64
-		cpuPer		int64
-		systemUsage	int64
-		memory  	int64
-	}
-	
-	containerStats[id].cpuTotal = cpu.usage.total
-	containerStats[id].cpuPer = cpu.usage.per_cpu_usage
-	containerStats[id].systemUsage = cpu.system_usage // This is not present in stats currently
-
-```
-- The autoscaler will check the service containers every 30s using following formula:
-```
-	autoscaleFlag = false
-	for 1 minute
-		averageCPUUsed := (CPUUsage(container1)+CPUUsage(container2)+CPUUsage(container3))/3
-		if averageCPUUsed > thresholdCPU {
-			autoscaleFlag = true
-		} else {
-			autoscaleFlag = false
-		}
-	end for
-	
-	if autoscaleFlag == true {
-		if autoScale.executed == true {
-			if (currentTime - autoScale.lastExecuted) > autoScale.quietPeriod {
-				POST(autoScale.webhook)
-			}
-		}
-	}
-	
+	statsMap := arr[0]
+	memLimit := statsMap["memLimit"].(float64)
+	memUsed := statsMap["memory"].(map[string]interface{})["usage"].(float64)
+	memoryUtilization := (memUsed / memLimit) * 100
 ```
 
 <h2> Initial description </h2>
