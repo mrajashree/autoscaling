@@ -174,3 +174,6 @@ To calculate memory percentage as per docker stats, we can use fields `memLimit`
 	memUsed := statsMap["memory"].(map[string]interface{})["usage"].(float64)
 	memoryUtilization := (memUsed / memLimit) * 100
 ```
+
+**Current queued requests, requestes with error connecting, number of connections**
+- Every service will have a Rancher LB deployed for it. And the service should have label `lb=<lbName>`. On every host, we can run `curl http://lbName:9000/haproxy_stats;csv` to get the haproxy stats such as [these](https://cbonte.github.io/haproxy-dconv/configuration-1.5.html#9.1)
