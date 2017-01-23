@@ -3,13 +3,8 @@
 <h2> Design </h2>
 <h3> Collecting Stats </h3>
 - Rancher-Autoscaling microservice starts as a separate service like webhook with cattle. 
-- User through UI selects 'autoscale' option for a service, enters the rules for autoscaling. It will include the following parameters: </br>
+- User through UI selects 'autoscale' option for a service, enters the rules for autoscaling. The will be saved as a resource called `AutoScalePolicy`. It will include the following parameters: </br>
 
-serviceId | metric | threshold | min | max | action | amount | webhook | quietPeriod | lastExecuted
---- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- 
-string | string | int | int | int | string | int | string | int | int
-
-This will be saved as a resource called `AutoScalePolicy`. <br>
 ```
 "resourceFields": {
 	"serviceId": {
