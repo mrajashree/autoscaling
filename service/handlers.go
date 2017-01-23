@@ -32,6 +32,7 @@ func GetContainers(parameters map[string]interface{}) ([]string, error) {
 		instance, _ := apiClient.Instance.ById(instanceId)
 		externalIds = append(externalIds, instance.ExternalId)
 	}
+	GetHAProxy(projectID, serviceId, apiClient)
 	err = GetStats(externalIds, projectID, serviceId, apiClient)
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 
 	for {
 		counter := 0
-		containerCount := len(externalIds)
+		containerCount := len(service.InstanceIds)
 		for counter < containerCount {
 			_, buffer, err := conn.ReadMessage()
 			if err != nil {
@@ -79,11 +80,44 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 				return fmt.Errorf("Error in marshal: %v", err)
 			}
 			fmt.Printf("Arr : %v\n", arr)
+
+			container, err := apiClient.Container.ById(service.InstanceIds[counter])
+			if err != nil {
+				return fmt.Errorf("Error in get Container: %v", err)
+			}
+			if container == nil {
+				return fmt.Errorf("Container not found")
+			}
+			cpuContainer := container.MilliCpuReservation
+			fmt.Println(cpuContainer)
+			memContainer := container.MemoryReservation
+			fmt.Println(memContainer)
+			fmt.Println(container.CpuShares)
+			fmt.Printf("ID : %v\n", arr[0]["id"])
+			statsMap := arr[0]
+			memLimit := statsMap["memLimit"].(float64)
+			memUsed := statsMap["memory"].(map[string]interface{})["usage"].(float64)
+			fmt.Printf("memLimit : %v\n", memLimit)
+			fmt.Printf("memUsed : %v\n", memUsed)
+			memoryUtilization := (memUsed / memLimit) * 100
+			fmt.Println(memoryUtilization)
 			counter++
 		}
 		fmt.Printf("\n1 sec done\n\n")
 	}
 
+	return nil
+}
+
+func GetHAProxy(projectID string, serviceId string, apiClient client.RancherClient) error {
+	resp, err := http.Get("http://nginxLB:9000/haproxy_stats;csv")
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
 	return nil
 }
 
