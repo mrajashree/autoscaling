@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"time"
+	// "os"
+	// "time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mrajashree/autoscaling/types"
 	"github.com/rancher/go-rancher/v2"
 )
 
@@ -32,7 +33,7 @@ func GetContainers(parameters map[string]interface{}) ([]string, error) {
 		instance, _ := apiClient.Instance.ById(instanceId)
 		externalIds = append(externalIds, instance.ExternalId)
 	}
-	GetHAProxy(projectID, serviceId, apiClient)
+	// GetHAProxy(projectID, serviceId, apiClient)
 	err = GetStats(externalIds, projectID, serviceId, apiClient)
 	if err != nil {
 		return nil, err
@@ -41,7 +42,7 @@ func GetContainers(parameters map[string]interface{}) ([]string, error) {
 }
 
 func GetStats(externalIds []string, projectID string, serviceId string, apiClient client.RancherClient) error {
-	fmt.Printf("externalIds : %v\n", externalIds)
+	// fmt.Printf("externalIds : %v\n", externalIds)
 	service, err := apiClient.Service.ById(serviceId)
 	if err != nil {
 		return err
@@ -66,21 +67,42 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 	requestHeader.Add("Content-type", "application/json")
 	conn, resp, err := websocket.DefaultDialer.Dial(websocketURL, requestHeader)
 
+	currentMemUtilization := make(chan float64)
+
+	go CalculateStats(service, projectID, conn, currentMemUtilization)
+	val := <-currentMemUtilization
+	fmt.Printf("VAL!!!!!!! : %v\n", val)
+	return nil
+}
+
+func CalculateStats(service *client.Service, projectID string, conn *websocket.Conn, currentMemUtilization chan float64) error {
+	apiClient, err := GetClient(projectID)
+	if err != nil {
+		return err
+	}
+
+	var MemUtilThirtySeconds []float64
+	var avgMemUtilization float64
+
 	for {
 		counter := 0
 		containerCount := len(service.InstanceIds)
+		MemUtilService := float64(0)
 		for counter < containerCount {
 			_, buffer, err := conn.ReadMessage()
 			if err != nil {
 				return fmt.Errorf("Error in readMessage: %v", err)
 			}
-			var arr []map[string]interface{}
+			var arr []types.ContainerInfoStats
 			err = json.Unmarshal(buffer, &arr)
 			if err != nil {
 				return fmt.Errorf("Error in marshal: %v", err)
 			}
-			fmt.Printf("Arr : %v\n", arr)
+			fmt.Printf("ID : %v\n", arr[0].ID)
+			memUsed := int64(arr[0].Memory.Usage)
+			fmt.Printf("Memory used : %v\n", memUsed)
 
+			fmt.Printf("CPU : %v\n", arr[0].CPU.Usage)
 			container, err := apiClient.Container.ById(service.InstanceIds[counter])
 			if err != nil {
 				return fmt.Errorf("Error in get Container: %v", err)
@@ -88,67 +110,43 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 			if container == nil {
 				return fmt.Errorf("Container not found")
 			}
-			cpuContainer := container.MilliCpuReservation
-			fmt.Println(cpuContainer)
-			memContainer := container.MemoryReservation
-			fmt.Println(memContainer)
-			fmt.Println(container.CpuShares)
-			fmt.Printf("ID : %v\n", arr[0]["id"])
-			statsMap := arr[0]
-			memLimit := statsMap["memLimit"].(float64)
-			memUsed := statsMap["memory"].(map[string]interface{})["usage"].(float64)
-			fmt.Printf("memLimit : %v\n", memLimit)
-			fmt.Printf("memUsed : %v\n", memUsed)
-			memoryUtilization := (memUsed / memLimit) * 100
-			fmt.Println(memoryUtilization)
+			memReserved := container.MemoryReservation
+			if memReserved == 0 {
+				continue
+			}
+			fmt.Printf("Memory requested : %v\n", memReserved)
+			memoryUtilization := (float64(memUsed) / float64(memReserved)) * 100
+			fmt.Printf("MemoryUtilization : %v\n\n", memoryUtilization)
+			MemUtilService += memoryUtilization
 			counter++
 		}
-		fmt.Printf("\n1 sec done\n\n")
+		MemUtilService = MemUtilService / float64(len(service.InstanceIds))
+		MemUtilThirtySeconds = append(MemUtilThirtySeconds, MemUtilService)
+		fmt.Println(len(MemUtilThirtySeconds))
+		if len(MemUtilThirtySeconds) == 30 {
+			avgMemUtilization = sum(MemUtilThirtySeconds...) / 30
+			currentMemUtilization <- avgMemUtilization
+		}
 	}
-
 	return nil
 }
 
-func GetHAProxy(projectID string, serviceId string, apiClient client.RancherClient) error {
-	resp, err := http.Get("http://nginxLB:9000/haproxy_stats;csv")
-	if err != nil {
-		fmt.Println(err)
-		return nil
+func sum(nums ...float64) float64 {
+	total := float64(0)
+	for _, num := range nums {
+		total += num
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(body))
-	return nil
+	return total
 }
 
-type Config struct {
-	CattleURL       string
-	CattleAccessKey string
-	CattleSecretKey string
-}
-
-func GetConfig() Config {
-	config := Config{
-		CattleURL:       os.Getenv("CATTLE_URL"),
-		CattleAccessKey: os.Getenv("CATTLE_ACCESS_KEY"),
-		CattleSecretKey: os.Getenv("CATTLE_SECRET_KEY"),
-	}
-
-	return config
-}
-
-func GetClient(projectID string) (client.RancherClient, error) {
-	config := GetConfig()
-	url := fmt.Sprintf("%s/projects/%s/schemas", config.CattleURL, projectID)
-	fmt.Printf("url : %v\n", url)
-	apiClient, err := client.NewRancherClient(&client.ClientOpts{
-		Timeout:   time.Second * 30,
-		Url:       url,
-		AccessKey: config.CattleAccessKey,
-		SecretKey: config.CattleSecretKey,
-	})
-	if err != nil {
-		return client.RancherClient{}, fmt.Errorf("Error in creating API client")
-	}
-	return *apiClient, nil
-}
+// func GetHAProxy(projectID string, serviceId string, apiClient client.RancherClient) error {
+// 	resp, err := http.Get("http://nginxLB:9000/haproxy_stats;csv")
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil
+// 	}
+// 	defer resp.Body.Close()
+// 	body, err := ioutil.ReadAll(resp.Body)
+// 	fmt.Println(string(body))
+// 	return nil
+// }

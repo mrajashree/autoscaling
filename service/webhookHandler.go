@@ -10,7 +10,6 @@ import (
 	// "time"
 
 	"github.com/rancher/webhook-service/model"
-	// "github.com/rancher/webhook-service/model"
 )
 
 type AutoScale struct {

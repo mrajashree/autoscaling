@@ -1,9 +1,9 @@
 {
-	"name": "min1-7", 
-	"driver": "scaleService", 
+	"serviceId": "1s103",
+	"metric": "MemoryUtilization",
+	"threshold": 50,
 	"action": "up", 
-	"amount": 2, 
-	"serviceId": "1s6",
+	"amount": 2,
 	"min": 1,
 	"max": 6,
 	"projectId": "1a5"

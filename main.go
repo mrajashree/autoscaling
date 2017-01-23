@@ -12,7 +12,7 @@ import (
 
 func main() {
 	http.HandleFunc("/favicon.ico", handlerICon)
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", Monitor)
 	http.ListenAndServe(":8087", nil)
 }
 
@@ -20,12 +20,16 @@ func handlerICon(w http.ResponseWriter, r *http.Request) {}
 
 type WebhookRequest map[string]interface{}
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func Monitor(w http.ResponseWriter, r *http.Request) {
 	var webhookRequestData WebhookRequest
 	requestContent, err := ioutil.ReadFile("scaleUp.json")
 	if err != nil {
 		fmt.Printf("Error : %v\n", err)
 	}
+	// err = service.CreateWebhook(requestContent)
+	// if err != nil {
+	// 	fmt.Printf("Error : %v\n", err)
+	// }
 	json.Unmarshal(requestContent, &webhookRequestData)
 
 	_, err = service.GetContainers(webhookRequestData)
