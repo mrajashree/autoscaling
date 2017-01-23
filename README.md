@@ -120,6 +120,16 @@ Autoscale service can use the docker-stats formula for that:
 ```
 	var containerStats map[string]Stats	//Stats will contain fields necessary for utilization calculation
 	
+	func CPUUtilizationThresholdCrossed (threshold) bool {
+		currentCPUUtilization := CalculateCPUUsage()
+		if currentCPUUtilization > threshold {
+		currentTime := Time.Now()
+			if (currentTime - autoScale.lastExecuted) > autoScale.quietPeriod {
+				http.Post(autoScale.webhook)
+			}
+		}
+	}
+	
 	func CalculateCPUUsage() {
 	CPUUtilizationSixtySeconds := []
 		for {
