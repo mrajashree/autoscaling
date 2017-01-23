@@ -121,18 +121,31 @@ Autoscale service can use the docker-stats formula for that:
 	var containerStats map[string]Stats	//Stats will contain fields necessary for utilization calculation
 	
 	func CalculateCPUUsage() {
+	CPUUtilizationSixtySeconds := []
 		for {
-			_, buffer, err := conn.ReadMessage()
-			if err != nil {
-				return fmt.Errorf("Error in readMessage: %v", err)
+			counter := 0
+			containerCount := len(externalIds)
+			CPUUtilization := 0
+			for counter < containerCount {
+				_, buffer, err := conn.ReadMessage()
+				if err != nil {
+					return fmt.Errorf("Error in readMessage: %v", err)
+				}
+				var arr []DockerStats	//DockerStats can be struct used for unmarshaling incoming stats
+				err = json.Unmarshal(buffer, &arr)
+				if err != nil {
+					return fmt.Errorf("Error in marshal: %v", err)
+				}
+				containerStats[arr[id]].CPUTotal = arr.cpu.usage.total //and other required fields
+				CPUUtilization += getCPUUsage(containerStats[arr[id]])
+				counter++
 			}
-			var arr []DockerStats	//DockerStats can be struct used for unmarshaling incoming stats
-			err = json.Unmarshal(buffer, &arr)
-			if err != nil {
-				return fmt.Errorf("Error in marshal: %v", err)
+			avgCPUUtilization := CPUUtilization / len(externalIds) //To get avgCPUUtilization of the service
+			CPUUtilizationSixtySeconds = append(CPUUtilizationSixtySeconds, avgCPUUtilization)
+			if len(CPUUtilizationSixtySeconds) == 60 {
+				avgCPUUtilizationMinute := CPUUtilizationSixtySeconds / 60
+				CPUUtilizationSixtySeconds = []
 			}
-			containerStats[arr[id]].CPUTotal = arr.cpu.usage.total //and other required fields will be saved too
-			
 		}
 	}
 ```
