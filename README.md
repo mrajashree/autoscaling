@@ -116,7 +116,12 @@ Autoscale service can use the docker-stats formula for that:
 - The CPU request is in mCPU for kubernetes. Request in terms of mCPU can be provided through the Rancher UI while creating a service. Kubernetes makes it a must to specify CPU requests while creating pods/containers, or the kubernetes HorizontalPodAutoscaler ignores the containers during autoscaling for which the CPU request is not specified. Because the CPUUtilization is with respect to the CPU requested. Kubernetes uses heapster for getting metrics and it has a default [metric resolution](https://github.com/kubernetes/heapster/blob/e19c9fb0d78695ce02e34afc821be5525f70f1d7/metrics/options/options.go#L56) of 60s. The HorizontalPodAutoscaler period is 30s by default.
 
 <h3> Executing scale up/down </h3>
-- The CPUUtilization will be compared with threshold supplied during creation of AutoScalePolicy. The containerStats are incoming at a rate of 1 entry per second for all containers of a service
+- The CPUUtilization will be compared with the threshold supplied during creation of AutoScalePolicy. This comparison will take place in `CPUUtilizationThresholdCrossed` function, that calls `CalculateCPUUsage()`. 
+- In the function `CalculateCPUUsage()`, stats for all containers of a service are collected every second, and the CPUUtilization is calculated by calling `getCPUUsage()`. At the end of every second, the CPUUtilization for the service is calculated, by taking average CPUUtilization of all containers of the service.
+- This will be repeated for 60 seconds, and then the average CPUUtilzation of the service over the last minute is calculated and returned to `CPUUtilizationThresholdCrossed`
+- Within `CPUUtilizationThresholdCrossed` function, if the threshold has been crossed, and if the last time the webhook was executed for scaling was before the quietPeriod(3 min or 5 min) amount of time, then the webhook is executed. 
+
+The containerStats are incoming at a rate of 1 entry per second for all containers of a service
 ```
 	var containerStats map[string]Stats	//Stats will contain fields necessary for utilization calculation
 	
@@ -125,6 +130,7 @@ Autoscale service can use the docker-stats formula for that:
 		if currentCPUUtilization > threshold {
 		currentTime := Time.Now()
 			if (currentTime - autoScale.lastExecuted) > autoScale.quietPeriod {
+				autoScale.lastExecuted = currentTime
 				http.Post(autoScale.webhook)
 			}
 		}
@@ -150,8 +156,8 @@ Autoscale service can use the docker-stats formula for that:
 				CPUUtilization += getCPUUsage(containerStats[arr[id]]) 
 				counter++
 			}
-			avgCPUUtilization := CPUUtilization / len(externalIds) //To get avgCPUUtilization of the service
-			CPUUtilizationSixtySeconds = append(CPUUtilizationSixtySeconds, avgCPUUtilization)
+			CPUUtilization = CPUUtilization / len(externalIds) //To get avgCPUUtilization of the service
+			CPUUtilizationSixtySeconds = append(CPUUtilizationSixtySeconds, CPUUtilization)
 			if len(CPUUtilizationSixtySeconds) == 60 {
 				avgCPUUtilizationMinute := CPUUtilizationSixtySeconds / 60
 				CPUUtilizationSixtySeconds = []
