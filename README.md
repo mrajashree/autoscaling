@@ -147,7 +147,7 @@ Autoscale service can use the docker-stats formula for that:
 					return fmt.Errorf("Error in marshal: %v", err)
 				}
 				containerStats[arr[id]].CPUTotal = arr.cpu.usage.total //and other required fields
-				CPUUtilization += getCPUUsage(containerStats[arr[id]])
+				CPUUtilization += getCPUUsage(containerStats[arr[id]]) 
 				counter++
 			}
 			avgCPUUtilization := CPUUtilization / len(externalIds) //To get avgCPUUtilization of the service
@@ -157,6 +157,10 @@ Autoscale service can use the docker-stats formula for that:
 				CPUUtilizationSixtySeconds = []
 			}
 		}
+	}
+	
+	func getCPUUsage() {
+		//Will contain calculations from either of the two approaches
 	}
 ```
 
