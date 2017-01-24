@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	// "os"
-	// "time"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mrajashree/autoscaling/types"
 	"github.com/rancher/go-rancher/v2"
 )
 
-func GetContainers(parameters map[string]interface{}) ([]string, error) {
+func GetContainers(parameters map[string]interface{}, autoScaleObj AutoScale) ([]string, error) {
 	serviceId := parameters["serviceId"].(string)
 	projectID := parameters["projectId"].(string)
 	apiClient, err := GetClient(projectID)
@@ -34,14 +33,14 @@ func GetContainers(parameters map[string]interface{}) ([]string, error) {
 		externalIds = append(externalIds, instance.ExternalId)
 	}
 	// GetHAProxy(projectID, serviceId, apiClient)
-	err = GetStats(externalIds, projectID, serviceId, apiClient)
+	err = GetStats(externalIds, projectID, serviceId, apiClient, autoScaleObj)
 	if err != nil {
 		return nil, err
 	}
 	return externalIds, nil
 }
 
-func GetStats(externalIds []string, projectID string, serviceId string, apiClient client.RancherClient) error {
+func GetStats(externalIds []string, projectID string, serviceId string, apiClient client.RancherClient, autoScaleObj AutoScale) error {
 	// fmt.Printf("externalIds : %v\n", externalIds)
 	service, err := apiClient.Service.ById(serviceId)
 	if err != nil {
@@ -67,11 +66,24 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 	requestHeader.Add("Content-type", "application/json")
 	conn, resp, err := websocket.DefaultDialer.Dial(websocketURL, requestHeader)
 
-	currentMemUtilization := make(chan float64)
-
+	currentMemUtilization := make(chan float64, 1)
 	go CalculateStats(service, projectID, conn, currentMemUtilization)
-	val := <-currentMemUtilization
-	fmt.Printf("VAL!!!!!!! : %v\n", val)
+	ticker := time.NewTicker(time.Second * 15)
+	go func() {
+		for t := range ticker.C {
+			fmt.Printf("Getting calculated stats on channel at time %s", t)
+			val := <-currentMemUtilization
+			compareWithThreshold(val, autoScaleObj)
+			fmt.Printf("currentMemUtilization : %v\n", val)
+		}
+	}()
+	return nil
+}
+
+func compareWithThreshold(currentMemUtilization float64, autoScaleObj AutoScale) error {
+	if currentMemUtilization > autoScaleObj.Threshold {
+		http.Post(autoScaleObj.Webhook, "", nil)
+	}
 	return nil
 }
 
@@ -81,8 +93,9 @@ func CalculateStats(service *client.Service, projectID string, conn *websocket.C
 		return err
 	}
 
-	var MemUtilThirtySeconds []float64
+	MemUtilChannel := make(chan float64, 30)
 	var avgMemUtilization float64
+	var MemUtilTotal float64
 
 	for {
 		counter := 0
@@ -98,11 +111,7 @@ func CalculateStats(service *client.Service, projectID string, conn *websocket.C
 			if err != nil {
 				return fmt.Errorf("Error in marshal: %v", err)
 			}
-			fmt.Printf("ID : %v\n", arr[0].ID)
 			memUsed := int64(arr[0].Memory.Usage)
-			fmt.Printf("Memory used : %v\n", memUsed)
-
-			fmt.Printf("CPU : %v\n", arr[0].CPU.Usage)
 			container, err := apiClient.Container.ById(service.InstanceIds[counter])
 			if err != nil {
 				return fmt.Errorf("Error in get Container: %v", err)
@@ -114,19 +123,31 @@ func CalculateStats(service *client.Service, projectID string, conn *websocket.C
 			if memReserved == 0 {
 				continue
 			}
-			fmt.Printf("Memory requested : %v\n", memReserved)
 			memoryUtilization := (float64(memUsed) / float64(memReserved)) * 100
-			fmt.Printf("MemoryUtilization : %v\n\n", memoryUtilization)
 			MemUtilService += memoryUtilization
 			counter++
 		}
 		MemUtilService = MemUtilService / float64(len(service.InstanceIds))
-		MemUtilThirtySeconds = append(MemUtilThirtySeconds, MemUtilService)
-		fmt.Println(len(MemUtilThirtySeconds))
-		if len(MemUtilThirtySeconds) == 30 {
-			avgMemUtilization = sum(MemUtilThirtySeconds...) / 30
-			currentMemUtilization <- avgMemUtilization
+		MemUtilChannel <- MemUtilService
+
+		MemUtilTotal += MemUtilService
+		avgMemUtilization = MemUtilTotal / 30
+
+		// Keep calculating current average
+		currentMemUtilization <- avgMemUtilization
+		fmt.Printf("avgMemUtilization : %v\n", avgMemUtilization)
+
+		if len(MemUtilChannel) == 30 {
+			previosMem := <-MemUtilChannel
+			MemUtilTotal -= previosMem
 		}
+		select {
+		case <-currentMemUtilization:
+			fmt.Printf("Channel has contents\n")
+		default:
+			fmt.Printf("Channel empty\n")
+		}
+
 	}
 	return nil
 }

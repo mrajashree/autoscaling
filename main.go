@@ -26,13 +26,13 @@ func Monitor(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("Error : %v\n", err)
 	}
-	// err = service.CreateWebhook(requestContent)
-	// if err != nil {
-	// 	fmt.Printf("Error : %v\n", err)
-	// }
+	autoScaleObj, err := service.CreateWebhook(requestContent)
+	if err != nil {
+		fmt.Printf("Error : %v\n", err)
+	}
 	json.Unmarshal(requestContent, &webhookRequestData)
 
-	_, err = service.GetContainers(webhookRequestData)
+	_, err = service.GetContainers(webhookRequestData, autoScaleObj)
 	if err != nil {
 		fmt.Println(err)
 	}
