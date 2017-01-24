@@ -41,40 +41,15 @@ func GetContainers(parameters map[string]interface{}, autoScaleObj AutoScale) ([
 }
 
 func GetStats(externalIds []string, projectID string, serviceId string, apiClient client.RancherClient, autoScaleObj AutoScale) error {
-	// fmt.Printf("externalIds : %v\n", externalIds)
-	service, err := apiClient.Service.ById(serviceId)
-	if err != nil {
-		return err
-	}
-	containerStatsURL := service.Links["containerStats"]
-	resp, err := http.Get(containerStatsURL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	respMap := make(map[string]interface{})
-	err = json.Unmarshal(body, &respMap)
-	if err != nil {
-		return err
-	}
-
-	websocketURL := respMap["url"].(string) + "?token=" + respMap["token"].(string)
-	requestHeader := http.Header{}
-	requestHeader.Add("Connection", "Upgrade")
-	requestHeader.Add("Upgrade", "websocket")
-	requestHeader.Add("Content-type", "application/json")
-	conn, resp, err := websocket.DefaultDialer.Dial(websocketURL, requestHeader)
-
 	currentMemUtilization := make(chan float64, 1)
-	go CalculateStats(service, projectID, conn, currentMemUtilization)
+	go CalculateStats(serviceId, projectID, currentMemUtilization)
 	ticker := time.NewTicker(time.Second * 15)
 	go func() {
 		for t := range ticker.C {
-			fmt.Printf("Getting calculated stats on channel at time %s", t)
+			fmt.Printf("Getting calculated stats on channel at time %s\n", t)
 			val := <-currentMemUtilization
 			compareWithThreshold(val, autoScaleObj)
-			fmt.Printf("currentMemUtilization : %v\n", val)
+			fmt.Printf("Memory : %v\n", val)
 		}
 	}()
 	return nil
@@ -87,21 +62,44 @@ func compareWithThreshold(currentMemUtilization float64, autoScaleObj AutoScale)
 	return nil
 }
 
-func CalculateStats(service *client.Service, projectID string, conn *websocket.Conn, currentMemUtilization chan float64) error {
+func CalculateStats(serviceId string, projectID string, currentMemUtilization chan float64) error {
 	apiClient, err := GetClient(projectID)
 	if err != nil {
 		return err
 	}
 
-	MemUtilChannel := make(chan float64, 30)
+	conn := openWebsocket(serviceId, apiClient)
+
+	MemUtilChannel := make(chan float64, 10)
 	var avgMemUtilization float64
 	var MemUtilTotal float64
 
+	service, err := apiClient.Service.ById(serviceId)
+	if err != nil {
+		return err
+	}
+	if service == nil || service.Removed != "" {
+		return fmt.Errorf("Service not found/deleted")
+	}
+	previousLen := len(service.InstanceIds)
+
 	for {
 		counter := 0
-		containerCount := len(service.InstanceIds)
+		service, err := apiClient.Service.ById(serviceId)
+		if err != nil {
+			return err
+		}
+		if service == nil || service.Removed != "" {
+			return fmt.Errorf("Service not found/deleted")
+		}
+
+		if previousLen != len(service.InstanceIds) {
+			conn.Close()
+			conn = openWebsocket(serviceId, apiClient)
+		}
+
 		MemUtilService := float64(0)
-		for counter < containerCount {
+		for counter < len(service.InstanceIds) {
 			_, buffer, err := conn.ReadMessage()
 			if err != nil {
 				return fmt.Errorf("Error in readMessage: %v", err)
@@ -131,25 +129,51 @@ func CalculateStats(service *client.Service, projectID string, conn *websocket.C
 		MemUtilChannel <- MemUtilService
 
 		MemUtilTotal += MemUtilService
-		avgMemUtilization = MemUtilTotal / 30
+		avgMemUtilization = MemUtilTotal / 10
 
 		// Keep calculating current average
 		currentMemUtilization <- avgMemUtilization
-		fmt.Printf("avgMemUtilization : %v\n", avgMemUtilization)
 
-		if len(MemUtilChannel) == 30 {
+		if len(MemUtilChannel) == 10 {
 			previosMem := <-MemUtilChannel
 			MemUtilTotal -= previosMem
 		}
 		select {
 		case <-currentMemUtilization:
-			fmt.Printf("Channel has contents\n")
+			// fmt.Printf("Channel has contents\n")
 		default:
-			fmt.Printf("Channel empty\n")
+			// fmt.Printf("Channel empty\n")
 		}
 
 	}
 	return nil
+}
+
+func openWebsocket(serviceId string, apiClient client.RancherClient) *websocket.Conn {
+	service, err := apiClient.Service.ById(serviceId)
+	if err != nil {
+		return nil
+	}
+	containerStatsURL := service.Links["containerStats"]
+	resp, err := http.Get(containerStatsURL)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	respMap := make(map[string]interface{})
+	err = json.Unmarshal(body, &respMap)
+	if err != nil {
+		return nil
+	}
+
+	websocketURL := respMap["url"].(string) + "?token=" + respMap["token"].(string)
+	requestHeader := http.Header{}
+	requestHeader.Add("Connection", "Upgrade")
+	requestHeader.Add("Upgrade", "websocket")
+	requestHeader.Add("Content-type", "application/json")
+	conn, _, err := websocket.DefaultDialer.Dial(websocketURL, requestHeader)
+	return conn
 }
 
 func sum(nums ...float64) float64 {

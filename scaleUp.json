@@ -1,7 +1,7 @@
 {
-	"serviceId": "1s103",
+	"serviceId": "1s138",
 	"metric": "MemoryUtilization",
-	"threshold": 50,
+	"threshold": 80,
 	"action": "up", 
 	"amount": 1,
 	"min": 1,
