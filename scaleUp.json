@@ -1,10 +1,22 @@
-{
-	"serviceId": "1s138",
-	"metric": "MemoryUtilization",
-	"threshold": 80,
-	"action": "up", 
-	"amount": 1,
-	"min": 1,
-	"max": 10,
-	"projectId": "1a5"
-}
+[
+	{
+		"serviceId": "1s138",
+		"metric": "MemoryUtilization",
+		"threshold": 80,
+		"action": "up", 
+		"amount": 1,
+		"min": 1,
+		"max": 10,
+		"projectId": "1a5"
+	},
+	{
+		"serviceId": "1s138",
+		"metric": "MemoryUtilization",
+		"threshold": 40,
+		"action": "down", 
+		"amount": 1,
+		"min": 1,
+		"max": 10,
+		"projectId": "1a5"
+	}
+]

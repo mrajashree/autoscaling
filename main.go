@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -18,23 +17,19 @@ func main() {
 
 func handlerICon(w http.ResponseWriter, r *http.Request) {}
 
-type WebhookRequest map[string]interface{}
-
 func Monitor(w http.ResponseWriter, r *http.Request) {
-	var webhookRequestData WebhookRequest
 	requestContent, err := ioutil.ReadFile("scaleUp.json")
 	if err != nil {
 		fmt.Printf("Error : %v\n", err)
 	}
-	autoScaleObj, err := service.CreateWebhook(requestContent)
+	autoScalePolicies, err := service.CreateWebhook(requestContent)
 	if err != nil {
 		fmt.Printf("Error : %v\n", err)
 	}
-	json.Unmarshal(requestContent, &webhookRequestData)
+	fmt.Printf("autoScalePolicies : %v\n", autoScalePolicies)
 
-	_, err = service.GetContainers(webhookRequestData, autoScaleObj)
+	err = service.GetContainers(autoScalePolicies)
 	if err != nil {
 		fmt.Println(err)
 	}
-	// service.GetStats(externalIds)
 }

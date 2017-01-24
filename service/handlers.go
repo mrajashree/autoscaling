@@ -12,35 +12,38 @@ import (
 	"github.com/rancher/go-rancher/v2"
 )
 
-func GetContainers(parameters map[string]interface{}, autoScaleObj AutoScale) ([]string, error) {
-	serviceId := parameters["serviceId"].(string)
-	projectID := parameters["projectId"].(string)
-	apiClient, err := GetClient(projectID)
-	if err != nil {
-		return nil, err
+func GetContainers(autoScalePolicy []AutoScale) error {
+	for _, autoScaleObj := range autoScalePolicy {
+		serviceId := autoScaleObj.ServiceID
+		projectID := autoScaleObj.ProjectId
+		apiClient, err := GetClient(projectID)
+		if err != nil {
+			return err
+		}
+
+		service, err := apiClient.Service.ById(serviceId)
+		if err != nil {
+			return fmt.Errorf("Error in GetContainers for getService")
+		}
+		if service == nil || service.Removed != "" {
+			return fmt.Errorf("service %s not found", serviceId)
+		}
+		var externalIds []string
+		for _, instanceId := range service.InstanceIds {
+			instance, _ := apiClient.Instance.ById(instanceId)
+			externalIds = append(externalIds, instance.ExternalId)
+		}
+		// GetHAProxy(projectID, serviceId, apiClient)
+		err = GetStats(projectID, serviceId, apiClient, autoScaleObj)
+		if err != nil {
+			return err
+		}
 	}
 
-	service, err := apiClient.Service.ById(serviceId)
-	if err != nil {
-		return nil, fmt.Errorf("Error in GetContainers for getService")
-	}
-	if service == nil || service.Removed != "" {
-		return nil, fmt.Errorf("service %s not found", serviceId)
-	}
-	var externalIds []string
-	for _, instanceId := range service.InstanceIds {
-		instance, _ := apiClient.Instance.ById(instanceId)
-		externalIds = append(externalIds, instance.ExternalId)
-	}
-	// GetHAProxy(projectID, serviceId, apiClient)
-	err = GetStats(externalIds, projectID, serviceId, apiClient, autoScaleObj)
-	if err != nil {
-		return nil, err
-	}
-	return externalIds, nil
+	return nil
 }
 
-func GetStats(externalIds []string, projectID string, serviceId string, apiClient client.RancherClient, autoScaleObj AutoScale) error {
+func GetStats(projectID string, serviceId string, apiClient client.RancherClient, autoScaleObj AutoScale) error {
 	currentMemUtilization := make(chan float64, 1)
 	go CalculateStats(serviceId, projectID, currentMemUtilization)
 	ticker := time.NewTicker(time.Second * 15)
@@ -56,9 +59,16 @@ func GetStats(externalIds []string, projectID string, serviceId string, apiClien
 }
 
 func compareWithThreshold(currentMemUtilization float64, autoScaleObj AutoScale) error {
-	if currentMemUtilization > autoScaleObj.Threshold {
-		http.Post(autoScaleObj.Webhook, "", nil)
+	if autoScaleObj.Action == "up" {
+		if currentMemUtilization > autoScaleObj.Threshold {
+			http.Post(autoScaleObj.Webhook, "", nil)
+		}
+	} else {
+		if currentMemUtilization < autoScaleObj.Threshold {
+			http.Post(autoScaleObj.Webhook, "", nil)
+		}
 	}
+
 	return nil
 }
 
