@@ -185,4 +185,6 @@ To calculate memory percentage as per docker stats, we can use fields `memLimit`
 ```
 cat <(yes | tr \\n x | head -c $((1024*1024*7))) \
 <(sleep 120) | grep n
+
+cat <(yes | tr \\n x | head -c $((1024))) | grep n
 ```
