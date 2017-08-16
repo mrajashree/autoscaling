@@ -2,7 +2,7 @@
 
 <h2> Design </h2>
 <h3> Collecting Stats </h3>
-- Rancher-Autoscaling microservice starts as a separate service like webhook with cattle. 
+- Rancher-Autoscaling microservice starts as a separate service like webhook with cattle. </br>
 - User through UI selects 'autoscale' option for a service, enters the rules for autoscaling. The rule will be saved as a resource called `AutoScalePolicy`. It will include the following parameters: </br>
 
 ```
@@ -51,8 +51,9 @@
 - Using the serviceId, Rancher-Autoscaling service will open a websocket to obtain containerStats.
 
 <h3> Rancher-Autoscaling flow </h3>
-- The rancher-autoscale service will receive a POST request from cattle when a autoScalePolicy for a service is added. Using the data from this POST request, a webhook for scale up/down will be created for the service to be autoscaled. Rancher-autoscale service will then update the `AutoScalePolicy` object's webhook field to store the TriggerURL. Also, quietPeriod will be updated to be 3 mins for scaleUp and 5 mins for scaleDown
-- Using go-rancher client, the autoscale service will obtain the instanceIds of the service, and externalIds of those instances.
+
+- The rancher-autoscale service will receive a POST request from cattle when a autoScalePolicy for a service is added. Using the data from this POST request, a webhook for scale up/down will be created for the service to be autoscaled. Rancher-autoscale service will then update the `AutoScalePolicy` object's webhook field to store the TriggerURL. Also, quietPeriod will be updated to be 3 mins for scaleUp and 5 mins for scaleDown </br>
+- Using go-rancher client, the autoscale service will obtain the instanceIds of the service, and externalIds of those instances. </br>
 ```
 	service, err := apiClient.Service.ById(serviceId)
 	var externalIds []string
@@ -62,17 +63,17 @@
 	}
 	err = GetStats(externalIds, projectID, serviceId, apiClient)
 ```
-- Autoscale service will then send a GET request on containerStats URL of the service to get the websocket URL and statsAccess token
+- Autoscale service will then send a GET request on containerStats URL of the service to get the websocket URL and statsAccess token </br>
 ```
 	containerStatsURL := service.Links["containerStats"]
 	resp, err := http.Get(containerStatsURL)
 ```
-- Using these, it will open a websocket connection to get stats. 
+- Using these, it will open a websocket connection to get stats. </br>
 ```
 	websocketURL := respMap["url"].(string) + "?token=" + respMap["token"].(string)
 	conn, resp, err := websocket.DefaultDialer.Dial(websocketURL, requestHeader)
 ```
-- The stats received are of the following form:
+- The stats received are of the following form: </br>
 ```
 [map[id:ff16f87ec9ab3154966ffc85a578850f48f3a8957a5fa70b0dadfecc38227872 resourceType:container memLimit:1.044463616e+09
 timestamp:2017-01-20T19:11:04.539863676Z cpu:map[usage:map[per_cpu_usage:[6.7905753e+07] user:1e+07 system:1e+07
